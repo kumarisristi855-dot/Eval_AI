@@ -56,7 +56,7 @@ function AppContent() {
       </main>
 
       {/* Debug LocalStorage Overlay */}
-      {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+      {/* {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
         <div id="localstorage-debug" className="fixed bottom-4 right-4 bg-slate-900/95 border border-slate-800 p-4 rounded-lg shadow-2xl text-xs font-mono max-w-xs z-50 backdrop-blur">
           <div className="font-bold text-slate-400 mb-2 border-b border-slate-800 pb-1 flex justify-between items-center">
             <span>LocalStorage Debug</span>
@@ -68,7 +68,7 @@ function AppContent() {
             <div><span className="text-indigo-400">classId:</span> <span className="text-slate-300">{localStorage.getItem('classId') || 'null'}</span></div>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

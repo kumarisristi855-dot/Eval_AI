@@ -49,7 +49,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+    <div className="fixed inset-0 overflow-hidden flex items-center justify-center bg-slate-900">
       <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
         <h1 className="text-3xl font-bold text-center mb-8 text-blue-600">EvalAI Login</h1>
         
