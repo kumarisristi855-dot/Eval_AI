@@ -38,7 +38,7 @@ The following trace describes how a student answer sheet PDF travels from the Re
 │  (authenticateToken)    routes/upload.js                                    │
 │                         routes/evaluate.js                                  │
 │                         routes/export.js                                    │
-│                         routes/auth.js (public, before middleware)           │
+│                         routes/auth.js (public, before middleware)          │
 └───────────────────────────────────┬─────────────────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
@@ -70,17 +70,17 @@ The following trace describes how a student answer sheet PDF travels from the Re
 │    ├── For each question:                                                   │
 │    │   ├── MCQ? ──► Programmatic string compare (uppercase trim)            │
 │    │   │           UPDATE evaluations SET marks_awarded                     │
-│    │   │                                                                   │
-│    │   └── Theory? ──► Batch into groups of 25                             │
+│    │   │                                                                    │
+│    │   └── Theory? ──► Batch into groups of 25                              │
 │    │                   └── evaluateQuestionBatch()                          │
-│    │                       ├── Groq API (llama-3.3-70b-versatile)          │
+│    │                       ├── Groq API (llama-3.3-70b-versatile)           │
 │    │                       │   └── response_format: json_object             │
-│    │                       │   └── temperature: 0.1                        │
-│    │                       │   └── retry: 3 attempts, 10s delay on 429    │
+│    │                       │   └── temperature: 0.1                         │
+│    │                       │   └── retry: 3 attempts, 10s delay on 429      │
 │    │                       └── Mock fallback (keyword weighting)            │
-│    │                                                                       │
-│    └── After all questions graded:                                         │
-│        └── SUM(marks_awarded) → percentage → grade → UPDATE students       │
+│    │                                                                        │
+│    └── After all questions graded:                                          │
+│        └── SUM(marks_awarded) → percentage → grade → UPDATE students        │
 └───────────────────────────────────┬─────────────────────────────────────────┘
                                     │
                                     ▼
@@ -89,7 +89,7 @@ The following trace describes how a student answer sheet PDF travels from the Re
 │                                                                             │
 │  exams ───1:N──► questions                                                  │
 │  exams ───1:N──► students ──1:N──► evaluations                              │
-│  questions ──1:N──► evaluations                                              │
+│  questions ──1:N──► evaluations                                             │
 │                                                                             │
 │  CASCADE DELETES on all foreign keys                                        │
 │  CHECK constraints on question_type (mcq/short/long)                        │
