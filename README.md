@@ -117,18 +117,48 @@ Scores are compiled per student, percentages and grades are calculated, and a fu
 
 ---
 
+## Deployment & Live Architecture
+
+EvalAI is structured for production cloud hosting:
+
+| Component | Platform | Configuration |
+|---|---|---|
+| **Frontend** | Vercel | Framework preset: Vite; output dir: `dist`; env: `VITE_API_BASE` |
+| **Backend** | Render (Node.js) | Runtime: Node >=18; start command: `node index.js`; env: `DATABASE_URL`, `GROQ_API_KEY`, `JWT_SECRET`, `CLASS_*` |
+| **Database** | Supabase PostgreSQL | Connection via IPv4 Transaction Pooler; SSL required (`rejectUnauthorized: false`); schema auto-initialized on server start |
+
+### Architecture Flow
+
+```
+Browser ──▶ Vercel (Vite-built SPA)
+                │
+                │  api.get('/api/...') with Authorization: Bearer <JWT>
+                ▼
+        Render (Express 5 Server)
+                │
+                │  pg Pool query
+                ▼
+        Supabase PostgreSQL (SSL Pooler)
+```
+
+- **Database initialization** runs automatically on backend startup via `backend/database/db.js:initializeDatabase()` — executes `schema.sql` then applies `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migrations.
+- **No manual schema migration steps** are needed after the initial deploy.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 19, Tailwind CSS 4, React Router 7, Vite 8 |
-| Backend | Node.js, Express 5 |
-| Database | PostgreSQL |
-| AI Evaluation | Groq API (llama-3.3-70b-versatile) |
-| PDF Parsing | pdf-parse |
-| File Uploads | multer |
-| Excel Export | SheetJS (xlsx) |
-| PDF Export | jsPDF |
+| Frontend | React 19, Tailwind CSS 4, React Router 7, Vite 8 (with `@tailwindcss/vite` plugin) |
+| Backend | Node.js, Express 5 (pg Pool with SSL, auto-migrations) |
+| Database | PostgreSQL (Supabase via cloud connection pooler) |
+| AI Evaluation | Groq API (llama-3.3-70b-versatile, batch size 25, retry on 429) |
+| PDF Parsing | pdf-parse (Uint8Array → PDFParse) |
+| File Uploads | Multer 2 (disk storage, 10MB limit) |
+| Excel Export | SheetJS (xlsx) via reportGenerator.js |
+| PDF Export | jsPDF (server-side) via reportGenerator.js |
+| Auto-Migrations | `initializeDatabase()` — `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` on startup |
 
 ---
 
@@ -189,6 +219,17 @@ npm run dev
 
 Frontend runs at `http://localhost:5173` — open this in your browser.
 
+### Frontend Environment Configuration
+
+The file `frontend/src/config.js` controls API routing:
+
+```js
+export const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:5000`;
+```
+
+- **Production (Vercel):** Set `VITE_API_BASE` to your Render backend URL in the Vercel project dashboard → Environment Variables. Vite bakes this value at build time.
+- **Local development:** No config needed — it auto-resolves to `http://localhost:5000` using `window.location.hostname`.
+
 ---
 
 ## Grading System
@@ -218,15 +259,51 @@ Frontend runs at `http://localhost:5173` — open this in your browser.
 
 ---
 
-## Authentication
+## Security Architecture
 
-EvalAI uses class-based JWT authentication. Each class has its own login credentials configured in the `.env` file.
+### Class-Based JWT Authentication
 
-- **Login page** — Select your class and enter the password
-- **Password visibility toggle** — Click the eye icon to show/hide password
-- **Protected routes** — All pages except login require a valid JWT
-- **Auto-logout** — Session expires on 401/403 responses
-- **Navbar** — Displays logged-in class name with a logout button
+Each class has its own login credentials configured in the `.env` file (`CLASS_1_NAME`, `CLASS_1_PASSWORD`, etc.). Credentials are never stored in the database — they exist only as environment variables.
+
+**Token Lifecycle:**
+- On successful login, `jwt.sign({ classId, className }, JWT_SECRET, { expiresIn: '24h' })` issues a JWT
+- Token payload includes `classId` and `className`; no password is embedded
+- The `middleware/auth.js` `authenticateToken` function extracts the `Bearer` token from the `Authorization` header, verifies it with `jwt.verify()`, and attaches `req.classId` / `req.className` to downstream handlers
+
+**Route Protection Boundary:**
+- `/api/auth/*` — **public** (registered before the middleware in `index.js`)
+- `/api/*` — **protected** (all other exam, upload, evaluate, and export routes require a valid JWT)
+- 401 is returned if the token is missing; 403 if it is invalid or expired
+
+### Client-Side Interceptor Mechanics
+
+- **`utils/auth.js`** — Stores `token`, `className`, `classId` in `localStorage`; provides `getToken()`, `logout()`, `isLoggedIn()` (which decodes the JWT payload to check `exp`)
+- **`utils/api.js`** (Axios instance):
+  - *Request interceptor:* Reads `getToken()` from localStorage, attaches `Authorization: Bearer {token}` to every outgoing request
+  - *Response interceptor:* On 401 or 403, calls `logout()` → clears localStorage → redirects to `/login`
+- **`ProtectedRoute.jsx`** — Wraps all authenticated pages; calls `isLoggedIn()` and redirects to `/login` if the token is missing or expired
+
+### Authenticated Export (Blob Download)
+
+Export routes (`/api/exam/:id/export/excel`, `/api/exam/:id/export/pdf`, `/api/exam/:id/student/:studentId/export/pdf`) sit **behind** the JWT middleware. Direct `window.location.href` calls fail because the browser does not attach the Bearer token.
+
+**Fix implemented in `Dashboard.jsx:45-63`:**
+```js
+const handleExport = async (type) => {
+  const response = await api.get(`/api/exam/${examId}/export/${type}`, {
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `Class_Results_${examId}.${extension}`);
+  document.body.appendChild(link);
+  link.click();
+  link.parentNode.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+```
+This uses the authenticated Axios client, builds an in-memory Object URL, triggers a programmatic `<a>` click, and revokes the URL immediately after download.
 
 ---
 
@@ -316,8 +393,9 @@ EvalAI/
 - Maximum recommended batch size is **100 students per exam**
 - The Groq free tier has rate limits — large batches are processed in groups with automatic retry on rate limit errors
 - When no GROQ_API_KEY is configured, the system falls back to a keyword-based mock evaluator
-- All student data is stored in your local PostgreSQL database — only answer text is sent to Groq for evaluation
-- JWT tokens are stored in localStorage and automatically attached to all API requests
+- All student data is stored in your PostgreSQL database (local or cloud via Supabase) — only answer text is sent to Groq for evaluation
+- JWT tokens are stored in localStorage and automatically attached to all API requests via the Axios request interceptor
+- The backend auto-initializes the database schema on startup — no manual `psql` import needed for production deployments
 
 ---
 
