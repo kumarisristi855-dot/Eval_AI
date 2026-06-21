@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment variables - NEVER commit these
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+
+# Uploads folder (student PDFs)
+uploads/
+
+# Build outputs
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# PDF files
+*.pdf
