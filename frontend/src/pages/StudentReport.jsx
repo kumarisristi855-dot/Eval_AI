@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { API_BASE } from '../config';
 
 function StudentReport() {
   const { examId, studentId } = useParams();
@@ -123,8 +122,33 @@ function StudentReport() {
     fetchReport();
   }, [examId, studentId]);
 
-  const handleExportPDF = () => {
-    window.location.href = `${API_BASE}/api/exam/${examId}/student/${studentId}/export/pdf`;
+  const handleExportPDF = async () => {
+    try {
+      const response = await api.get(
+        `/api/exam/${examId}/student/${studentId}/export/pdf`,
+        { responseType: 'blob' }
+      );
+      
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const safeStudentName = student?.student_name 
+        ? student.student_name.toLowerCase().replace(/[^a-z0-9]/g, '_')
+        : 'student';
+      
+      link.setAttribute('download', `${safeStudentName}_report.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      setToast({
+        message: 'Failed to export PDF. Check console for details.',
+        type: 'error'
+      });
+    }
   };
 
   const getRowClass = (obtained, max) => {
